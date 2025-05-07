@@ -1,0 +1,44 @@
+# Maven
+/target/
+/.mvn/timing.properties
+**/pom.xml.tag
+**/pom.xml.releaseBackup
+**/pom.xml.versionsBackup
+**/release.properties
+**/dependency-reduced-pom.xml
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# IntelliJ IDEA
+*.iml
+/.idea
+/out/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and reports
+logs/
+*.log
+
+# Spring Boot DevTools
+spring-devtools.properties
+
+# Executables
+*.jar
+*.war
+
+# Environment variables
+.env
+
+# Temporary files
+tmp/
+*.tmp
+# End of .gitignore
