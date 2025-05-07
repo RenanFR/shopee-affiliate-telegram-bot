@@ -1,7 +1,6 @@
 package com.agamatec.shopee_affiliate_telegram_bot.service;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.codec.digest.DigestUtils;
@@ -11,14 +10,14 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import com.agamatec.shopee_affiliate_telegram_bot.model.Click;
+import com.agamatec.shopee_affiliate_telegram_bot.model.ConversionReportConnection;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class ShopeeApiService {
-	private static final String API_ENDPOINT = "https://open-api.affiliate.shopee.com.my/graphql";
+	private static final String API_ENDPOINT = "https://open-api.affiliate.shopee.com.br/graphql";
 	private final RestTemplate restTemplate;
 	private final ObjectMapper objectMapper;
 
@@ -27,20 +26,42 @@ public class ShopeeApiService {
 		this.objectMapper = new ObjectMapper();
 	}
 
-	public List<Click> fetchClickReport(String appId, String secret, String fromDate, String toDate) {
+	public ConversionReportConnection fetchConversionReport(String appId, String secret, long purchaseTimeStart,
+			long purchaseTimeEnd, int limit, String scrollId) {
+
 		String query = """
-				    query getClickReport($from: String!, $to: String!, $offset: Int!, $limit: Int!) {
-				      clickReport(fromDate: $from, toDate: $to, pagination: { offset: $offset, limit: $limit }) {
+				    query getConversionReport(
+				      $purchaseTimeStart: Int64!,
+				      $purchaseTimeEnd:   Int64!,
+				      $limit:             Int!,
+				      $scrollId:          String
+				    ) {
+				      conversionReport(
+				        purchaseTimeStart: $purchaseTimeStart,
+				        purchaseTimeEnd:   $purchaseTimeEnd,
+				        limit:             $limit,
+				        scrollId:          $scrollId
+				      ) {
 				        nodes {
+				          conversionId
+				          purchaseTime
 				          clickTime
-				          platform
+				          conversionStatus
+				          totalCommission
+				          device
 				          referrer
+				        }
+				        pageInfo {
+				          hasNextPage
+				          scrollId
+				          limit
 				        }
 				      }
 				    }
 				""";
 
-		Map<String, Object> variables = Map.of("from", fromDate, "to", toDate, "offset", 0, "limit", 50);
+		Map<String, Object> variables = Map.of("purchaseTimeStart", String.valueOf(purchaseTimeStart),
+				"purchaseTimeEnd", String.valueOf(purchaseTimeEnd), "limit", limit, "scrollId", scrollId);
 		Map<String, Object> payload = Map.of("query", query, "variables", variables);
 
 		String body;
@@ -51,8 +72,7 @@ public class ShopeeApiService {
 		}
 
 		String timestamp = String.valueOf(Instant.now().getEpochSecond());
-		String baseString = appId + timestamp + body + secret;
-		String signature = DigestUtils.sha256Hex(baseString);
+		String signature = DigestUtils.sha256Hex(appId + timestamp + body + secret);
 
 		HttpHeaders headers = new HttpHeaders();
 		headers.setContentType(MediaType.APPLICATION_JSON);
@@ -61,13 +81,14 @@ public class ShopeeApiService {
 
 		HttpEntity<String> request = new HttpEntity<>(body, headers);
 		JsonNode root = restTemplate.postForObject(API_ENDPOINT, request, JsonNode.class);
+
 		if (root == null || root.path("data").isMissingNode()) {
 			throw new RuntimeException("Resposta inválida da API Shopee");
 		}
 
-		JsonNode nodes = root.path("data").path("clickReport").path("nodes");
+		JsonNode conv = root.path("data").path("conversionReport");
 		try {
-			return objectMapper.convertValue(nodes, new TypeReference<List<Click>>() {
+			return objectMapper.convertValue(conv, new TypeReference<ConversionReportConnection>() {
 			});
 		} catch (Exception e) {
 			throw new RuntimeException("Erro ao desserializar resposta da Shopee", e);

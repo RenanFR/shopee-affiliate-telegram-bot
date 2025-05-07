@@ -1,6 +1,8 @@
 package com.agamatec.shopee_affiliate_telegram_bot.bot;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -11,7 +13,8 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 
-import com.agamatec.shopee_affiliate_telegram_bot.model.Click;
+import com.agamatec.shopee_affiliate_telegram_bot.model.ConversionReport;
+import com.agamatec.shopee_affiliate_telegram_bot.model.ConversionReportConnection;
 import com.agamatec.shopee_affiliate_telegram_bot.service.AffiliateService;
 import com.agamatec.shopee_affiliate_telegram_bot.service.ShopeeApiService;
 
@@ -64,11 +67,11 @@ public class ShopeeBot extends TelegramLongPollingBot {
 				case "/config":
 					handleConfig(parts, chatId);
 					break;
-				case "/clicks":
-					handleClicks(parts, chatId);
+				case "/conversions":
+					handleConversions(parts, chatId);
 					break;
 				default:
-					sendMessage(chatId, "Comando não reconhecido. Use /config ou /clicks.");
+					sendMessage(chatId, "Comando não reconhecido. Use /config ou /conversions.");
 				}
 			} catch (Exception e) {
 				logger.error("Erro ao processar comando: {}", text, e);
@@ -86,24 +89,27 @@ public class ShopeeBot extends TelegramLongPollingBot {
 		}
 	}
 
-	private void handleClicks(String[] parts, Long chatId) {
+	private void handleConversions(String[] parts, Long chatId) {
 		affiliateService.findByChatId(chatId).ifPresentOrElse(creds -> {
-			String from;
-			String to;
+			long purchaseStart;
+			long purchaseEnd;
 			if (parts.length == 3) {
-				from = parts[1];
-				to = parts[2];
+				purchaseStart = LocalDate.parse(parts[1]).atStartOfDay(ZoneOffset.UTC).toEpochSecond();
+				purchaseEnd = LocalDate.parse(parts[2]).atStartOfDay(ZoneOffset.UTC).toEpochSecond();
 			} else {
-				to = LocalDate.now().toString();
-				from = LocalDate.now().minusDays(7).toString();
+				purchaseEnd = Instant.now().getEpochSecond();
+				purchaseStart = Instant.now().minusSeconds(7 * 24 * 3600).getEpochSecond();
 			}
-			List<Click> clicks = apiService.fetchClickReport(creds.getAppId(), creds.getSecret(), from, to);
-			if (clicks.isEmpty()) {
-				sendMessage(chatId, "Nenhum clique nesse período.");
+			ConversionReportConnection report = apiService.fetchConversionReport(creds.getAppId(), creds.getSecret(),
+					(int) purchaseStart, (int) purchaseEnd, 50, "");
+			List<ConversionReport> nodes = report.getNodes();
+			if (nodes == null || nodes.isEmpty()) {
+				sendMessage(chatId, "Nenhuma conversão encontrada nesse período.");
 			} else {
 				StringBuilder sb = new StringBuilder();
-				clicks.forEach(c -> sb.append(c.getClickTime()).append(" | ").append(c.getPlatform())
-						.append(" | referrer: ").append(c.getReferrer()).append("\n"));
+				nodes.forEach(r -> sb.append(r.getConversionId()).append(" | pedido em: ").append(r.getPurchaseTime())
+						.append(" | click: ").append(r.getClickTime()).append(" | comissão: ")
+						.append(r.getTotalCommission()).append("\n"));
 				sendMessage(chatId, sb.toString());
 			}
 		}, () -> sendMessage(chatId, "Por favor, configure suas credenciais com /config primeiro."));
